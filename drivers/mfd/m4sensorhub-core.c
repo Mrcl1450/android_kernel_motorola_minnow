@@ -105,21 +105,12 @@ int m4sensorhub_set_bootmode(struct m4sensorhub_data *m4sensorhub,
 	}
 
 	switch (bootmode) {
-	case BOOTMODE00:
+	case BOOTMODE0:
 		gpio_set_value(m4sensorhub->hwconfig.boot0_gpio, 0);
-		gpio_set_value(m4sensorhub->hwconfig.boot1_gpio, 0);
 		break;
-	case BOOTMODE01:
+	case BOOTMODE1:
 		gpio_set_value(m4sensorhub->hwconfig.boot0_gpio, 1);
-		gpio_set_value(m4sensorhub->hwconfig.boot1_gpio, 0);
 		break;
-	case BOOTMODE10:
-		gpio_set_value(m4sensorhub->hwconfig.boot0_gpio, 0);
-		gpio_set_value(m4sensorhub->hwconfig.boot1_gpio, 1);
-		break;
-	case BOOTMODE11:
-		gpio_set_value(m4sensorhub->hwconfig.boot0_gpio, 1);
-		gpio_set_value(m4sensorhub->hwconfig.boot1_gpio, 1);
 	default:
 		break;
 	}
@@ -143,7 +134,7 @@ void m4sensorhub_hw_reset(struct m4sensorhub_data *m4sensorhub)
 	}
 
 	if (m4sensorhub->i2c_client->addr == 0x39) {
-		err = m4sensorhub_set_bootmode(m4sensorhub, BOOTMODE01);
+		err = m4sensorhub_set_bootmode(m4sensorhub, BOOTMODE1);
 		if (err < 0) {
 			pr_err("%s: Failed to enter bootmode 01\n", __func__);
 			goto m4sensorhub_hw_reset_fail;
@@ -154,7 +145,7 @@ void m4sensorhub_hw_reset(struct m4sensorhub_data *m4sensorhub)
 		gpio_set_value(m4sensorhub->hwconfig.reset_gpio, 1);
 		msleep(400);
 	} else {
-		err = m4sensorhub_set_bootmode(m4sensorhub, BOOTMODE00);
+		err = m4sensorhub_set_bootmode(m4sensorhub, BOOTMODE0);
 		if (err < 0) {
 			pr_err("%s: Failed to enter bootmode 00\n", __func__);
 			goto m4sensorhub_hw_reset_fail;
@@ -243,16 +234,6 @@ static int m4sensorhub_hw_init(struct m4sensorhub_data *m4sensorhub,
 	gpio_direction_output(gpio, 0);
 	m4sensorhub->hwconfig.boot0_gpio = gpio;
 
-	gpio = of_get_named_gpio_flags(node, "mot,boot1-gpio", 0, NULL);
-	err = (gpio < 0) ? -ENODEV : gpio_request(gpio, "m4sensorhub-boot1");
-	if (err) {
-		pr_err("Failed acquiring M4 Sensor Hub Boot1 GPIO-%d (%d)\n",
-			gpio, err);
-		goto error_boot1;
-	}
-	gpio_direction_output(gpio, 0);
-	m4sensorhub->hwconfig.boot1_gpio = gpio;
-
 	gpio = of_get_named_gpio_flags(node, "mot,enable-gpio", 0, NULL);
 	err = (gpio < 0) ? -ENODEV : gpio_request(gpio, "m4sensorhub-enable");
 	if (err) {
@@ -266,9 +247,6 @@ static int m4sensorhub_hw_init(struct m4sensorhub_data *m4sensorhub,
 	return 0;
 
 error_enable:
-	gpio_free(m4sensorhub->hwconfig.boot1_gpio);
-	m4sensorhub->hwconfig.boot1_gpio = -1;
-error_boot1:
 	gpio_free(m4sensorhub->hwconfig.boot0_gpio);
 	m4sensorhub->hwconfig.boot0_gpio = -1;
 error_boot0:
@@ -312,11 +290,6 @@ static void m4sensorhub_hw_free(struct m4sensorhub_data *m4sensorhub)
 	if (m4sensorhub->hwconfig.boot0_gpio >= 0) {
 		gpio_free(m4sensorhub->hwconfig.boot0_gpio);
 		m4sensorhub->hwconfig.boot0_gpio = -1;
-	}
-
-	if (m4sensorhub->hwconfig.boot1_gpio >= 0) {
-		gpio_free(m4sensorhub->hwconfig.boot1_gpio);
-		m4sensorhub->hwconfig.boot1_gpio = -1;
 	}
 
 	if (m4sensorhub->hwconfig.mpu_9150_en_gpio >= 0) {

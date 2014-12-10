@@ -55,10 +55,8 @@ enum m4sensorhub_mode {
 };
 
 enum m4sensorhub_bootmode {
-	BOOTMODE00,
-	BOOTMODE01,
-	BOOTMODE10,
-	BOOTMODE11,
+	BOOTMODE0,
+	BOOTMODE1
 };
 
 /* This enum is used to register M4 panic callback
@@ -90,7 +88,6 @@ struct m4sensorhub_hwconfig {
 	int reset_gpio;
 	int wake_gpio;
 	int boot0_gpio;
-	int boot1_gpio;
 	int mpu_9150_en_gpio;
 };
 
