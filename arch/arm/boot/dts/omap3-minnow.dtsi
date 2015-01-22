@@ -46,16 +46,20 @@
 	regulators {
 		compatible = "simple-bus";
 
-		vmmc: gpio-regulator {
+		vmmcwl_fixed: fixedregulator-mmcwl {
 			compatible = "regulator-fixed";
-
+			regulator-name = "vmmcwl_fixed";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-			regulator-name = "vmmc";
-			gpio = <&gpio6 26 0>;
+			gpio = <&gpio6 26 0>;	/* gpio6_26 */
 			startup-delay-us = <70000>;
 			enable-active-high;
 		};
+	};
+
+	wlcore {
+		compatible = "wlcore";
+		gpio = <10>;
 	};
 
 	/* external 26MHz clock which is controlled by gpio
@@ -929,12 +933,11 @@ tps65912_0: tps65912 {
 
 /* wireless */
 &mmc3 {
-	ti,non-removable;
-	cap-power-off-card;
+	vmmc-supply = <&vmmcwl_fixed>;
 	bus-width = <4>;
-	vmmc-supply = <&vmmc>;
-	wl_host_wake_gpio = <10>;
-	status = "disabled";
+	cap-power-off-card;
+	keep-power-in-suspend;
+	ti,non-removable;
 };
 
 &usb_otg_hs {
