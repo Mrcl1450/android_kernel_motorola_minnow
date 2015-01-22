@@ -226,13 +226,14 @@ MODULE_DEVICE_TABLE(of, wlcore_of_match);
 static struct wl12xx_platform_data *get_platform_data(struct device *dev)
 {
 	struct wl12xx_platform_data *pdata;
+	struct device_node __maybe_unused *np;
 
 	pr_info("wl12xx get_platform_data\n");
 	pdata = wl12xx_get_platform_data();
 	if (!IS_ERR(pdata))
 		return kmemdup(pdata, sizeof(*pdata), GFP_KERNEL);
 
-#if 0 
+#ifdef CONFIG_OF
 	np = of_find_matching_node(NULL, wlcore_of_match);
 	if (!np) {
 		dev_err(dev, "No platform data set\n");
@@ -246,6 +247,7 @@ static struct wl12xx_platform_data *get_platform_data(struct device *dev)
 	}
 
 	if (of_property_read_u32(np, "irq", &pdata->irq)) {
+		u32 gpio;
 		if (!of_property_read_u32(np, "gpio", &gpio) &&
 		    !gpio_request_one(gpio, GPIOF_IN, "wlcore_irq")) {
 			pdata->gpio = gpio;
@@ -257,7 +259,6 @@ static struct wl12xx_platform_data *get_platform_data(struct device *dev)
 	pdata->use_eeprom = of_property_read_bool(np, "use-eeprom");
 	of_property_read_u32(np, "board-ref-clock", &pdata->board_ref_clock);
 	of_property_read_u32(np, "board-tcxo-clock", &pdata->board_tcxo_clock);
-	of_property_read_u32(np, "platform-quirks", &pdata->platform_quirks);
 #endif
 
 	if (IS_ERR(pdata))
