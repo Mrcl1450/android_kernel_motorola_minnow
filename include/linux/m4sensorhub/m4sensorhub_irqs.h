@@ -84,6 +84,9 @@ enum m4sensorhub_irqs {
 	/* INT2 0x04 : HR data ready */
 	M4SH_IRQ_HEARTRATE_DATA_READY,
 
+	/* INT2 0x08 : Significant motion */
+	M4SH_IRQ_SIGNIFICANT_MOTION,
+
 	/* Number of allocated interrupts */
 	M4SH_IRQ__NUM
 };
