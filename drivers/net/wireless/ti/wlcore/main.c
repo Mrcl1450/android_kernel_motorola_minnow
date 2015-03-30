@@ -1675,6 +1675,8 @@ static int wl1271_configure_suspend_sta(struct wl1271 *wl,
 					struct cfg80211_wowlan *wow)
 {
 	int ret = 0;
+	u8 suspend_listen_interval = wl->conf.conn.suspend_listen_interval;
+	const struct ieee80211_vif *ieee80211vif = wl12xx_wlvif_to_vif(wlvif);
 
 	if (!test_bit(WLVIF_FLAG_STA_ASSOCIATED, &wlvif->flags))
 		goto out;
@@ -1687,15 +1689,43 @@ static int wl1271_configure_suspend_sta(struct wl1271 *wl,
 	if (ret < 0)
 		goto out_sleep;
 
+	/*
+	 * When system is in suspend state and DTIM is set to a relatively
+	 * small number then we can afford to skip few DTIMs without
+	 * negative effect on stability of the link and without possible timing
+	 * issues in upper protocols above L2 This approach allows us to
+	 * minimize current drain in suspend state. Here is formula we're
+	 * using for periodic wakeups when system is in suspend state:
+	 * DTIM = 1 => wake up on every 3rd DTIM
+	 * DTIM = 2 => wake up on every 2nd DTIM
+	 * In all other cases we're waking up on every DTIM and check TIM IE
+	 * to guarantee low latency when receiving and handling incoming data.
+	*/
+	if (wl->conf.conn.suspend_wake_up_event == CONF_WAKE_UP_EVENT_N_DTIM) {
+		if (ieee80211vif->bss_conf.dtim_period) {
+			switch (ieee80211vif->bss_conf.dtim_period) {
+			case 1:
+				suspend_listen_interval = 3;
+				break;
+			case 2:
+				suspend_listen_interval = 2;
+				break;
+			default:
+				suspend_listen_interval = 1;
+				break;
+			}
+		}
+	}
+
 	if ((wl->conf.conn.suspend_wake_up_event ==
 	     wl->conf.conn.wake_up_event) &&
-	    (wl->conf.conn.suspend_listen_interval ==
+	    (suspend_listen_interval ==
 	     wl->conf.conn.listen_interval))
 		goto out_sleep;
 
 	ret = wl1271_acx_wake_up_conditions(wl, wlvif,
 				    wl->conf.conn.suspend_wake_up_event,
-				    wl->conf.conn.suspend_listen_interval);
+				    suspend_listen_interval);
 
 	if (ret < 0)
 		wl1271_error("suspend: set wake up conditions failed: %d", ret);
@@ -5948,6 +5978,7 @@ static int wl1271_init_ieee80211(struct wl1271 *wl)
 		IEEE80211_HW_HAS_RATE_CONTROL |
 		IEEE80211_HW_CONNECTION_MONITOR |
 		IEEE80211_HW_REPORTS_TX_ACK_STATUS |
+		IEEE80211_HW_NEED_DTIM_BEFORE_ASSOC |
 		IEEE80211_HW_SPECTRUM_MGMT |
 		IEEE80211_HW_AP_LINK_PS |
 		IEEE80211_HW_AMPDU_AGGREGATION |
