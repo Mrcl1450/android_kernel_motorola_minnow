@@ -92,7 +92,7 @@ static void m4hrt_work_func(struct work_struct *work)
 		goto m4hrt_isr_fail;
 	}
 
-	dd->iiodat.timestamp = iio_get_time_ns();
+	dd->iiodat.timestamp = ktime_to_ns(ktime_get_boottime());
 	iio_push_to_buffers(iio, (unsigned char *)&(dd->iiodat));
 	if (dd->samplerate > 0)
 		queue_delayed_work(system_freezable_wq, &(dd->m4hrt_work),

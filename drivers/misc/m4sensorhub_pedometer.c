@@ -166,7 +166,7 @@ static int m4ped_read_report_data(struct iio_dev *iio,
 		goto m4ped_read_fail;
 	}
 
-	dd->iiodat.timestamp = iio_get_time_ns();
+	dd->iiodat.timestamp = ktime_to_ns(ktime_get_boottime());
 
 	/* Save data if these values decrease (they monotonically increase) */
 	if ((dat.total_distance < dd->last_dat.total_distance) ||
