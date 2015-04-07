@@ -127,8 +127,8 @@ static void evdev_events(struct input_handle *handle,
 	struct evdev_client *client;
 	ktime_t time_mono, time_real;
 
-	time_mono = ktime_get_boottime();
-	time_real = ktime_sub(ktime_get(), ktime_get_monotonic_offset());
+	time_mono = ktime_get();
+	time_real = ktime_sub(time_mono, ktime_get_monotonic_offset());
 
 	rcu_read_lock();
 
