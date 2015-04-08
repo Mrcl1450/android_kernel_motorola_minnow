@@ -92,8 +92,11 @@ static void m4als_work_func(struct work_struct *work)
 						    m4als_work.work);
 	int size = 0;
 	uint16_t luminosity = 0;
+	struct timespec ts;
 
 	mutex_lock(&(dd->mutex));
+
+	get_monotonic_boottime(&ts);
 
 	size = m4sensorhub_reg_getsize(dd->m4, M4SH_REG_LIGHTSENSOR_SIGNAL);
 	if (size < 0) {
@@ -120,10 +123,14 @@ static void m4als_work_func(struct work_struct *work)
 	if (dd->chargerstatus == true) {
 		als_notify_subscriber(luminosity);
 	} else {
+		input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_sec);
+		input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_nsec);
 		input_event(dd->indev, EV_MSC, MSC_RAW, dd->luminosity);
 		input_sync(dd->indev);
 	}
 #else
+		input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_sec);
+		input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_nsec);
 		input_event(dd->indev, EV_MSC, MSC_RAW, dd->luminosity);
 		input_sync(dd->indev);
 #endif
@@ -332,6 +339,7 @@ static int m4als_create_m4eventdev(struct m4als_driver_data *dd)
 
 	dd->indev->name = M4ALS_DRIVER_NAME;
 	input_set_drvdata(dd->indev, dd);
+	input_set_capability(dd->indev, EV_MSC, MSC_TIMESTAMP);
 	input_set_capability(dd->indev, EV_MSC, MSC_RAW);
 
 	err = input_register_device(dd->indev);

@@ -68,8 +68,11 @@ static void m4gyr_work_func(struct work_struct *work)
 						    m4gyr_work.work);
 	int size = 0;
 	enum m4sensorhub_reg reg[3];
+	struct timespec ts;
 
 	mutex_lock(&(dd->mutex));
+
+	get_monotonic_boottime(&ts);
 
 	reg[0] = M4SH_REG_GYRO_X;
 	reg[1] = M4SH_REG_GYRO_Y;
@@ -143,6 +146,8 @@ static void m4gyr_work_func(struct work_struct *work)
 		goto m4gyr_isr_fail;
 	}
 
+	input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_sec);
+	input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_nsec);
 	input_report_rel(dd->indev, REL_RX, dd->sensdat.x);
 	input_report_rel(dd->indev, REL_RY, dd->sensdat.y);
 	input_report_rel(dd->indev, REL_RZ, dd->sensdat.z);
@@ -329,6 +334,7 @@ static int m4gyr_create_m4eventdev(struct m4gyr_driver_data *dd)
 	set_bit(REL_RX, dd->indev->relbit);
 	set_bit(REL_RY, dd->indev->relbit);
 	set_bit(REL_RZ, dd->indev->relbit);
+	input_set_capability(dd->indev, EV_MSC, MSC_TIMESTAMP);
 
 	err = input_register_device(dd->indev);
 	if (err < 0) {
