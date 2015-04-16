@@ -74,7 +74,15 @@ static void wl1271_rx_status(struct wl1271 *wl,
 	if (desc->rate <= wl->hw_min_ht_rate)
 		status->flag |= RX_FLAG_HT;
 
-	status->signal = desc->rssi;
+	/*
+	 * Read the signal level and antenna diversity indication.
+	 * The msb in the signal level is always set as it is a
+	 * negative number.
+	 * The antenna indication is the msb of the rssi.
+	 */
+
+	status->signal = ((desc->rssi & RSSI_LEVEL_BITMASK) | BIT(7));
+	status->antenna = ((desc->rssi & ANT_DIVERSITY_BITMASK) >> 7);
 
 	/*
 	 * FIXME: In wl1251, the SNR should be divided by two.  In wl1271 we
@@ -315,7 +323,7 @@ int wl1271_rx_filter_enable(struct wl1271 *wl,
 {
 	int ret;
 
-	if (wl->rx_filter_enabled[index] == enable) {
+	if (!!test_bit(index, wl->rx_filter_enabled) == enable) {
 		wl1271_warning("Request to enable an already "
 			     "enabled rx filter %d", index);
 		return 0;
@@ -329,7 +337,10 @@ int wl1271_rx_filter_enable(struct wl1271 *wl,
 		return ret;
 	}
 
-	wl->rx_filter_enabled[index] = enable;
+	if (enable)
+		__set_bit(index, wl->rx_filter_enabled);
+	else
+		__clear_bit(index, wl->rx_filter_enabled);
 
 	return 0;
 }
@@ -339,7 +350,7 @@ int wl1271_rx_filter_clear_all(struct wl1271 *wl)
 	int i, ret = 0;
 
 	for (i = 0; i < WL1271_MAX_RX_FILTERS; i++) {
-		if (!wl->rx_filter_enabled[i])
+		if (!test_bit(i, wl->rx_filter_enabled))
 			continue;
 		ret = wl1271_rx_filter_enable(wl, i, 0, NULL);
 		if (ret)

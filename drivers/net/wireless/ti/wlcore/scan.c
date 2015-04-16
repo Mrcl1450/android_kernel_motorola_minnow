@@ -189,16 +189,14 @@ wlcore_scan_get_channels(struct wl1271 *wl,
 		flags = req_channels[i]->flags;
 
 		if (force_passive)
-			flags |= IEEE80211_CHAN_PASSIVE_SCAN;
+			flags |= IEEE80211_CHAN_NO_IR;
 
 		if ((req_channels[i]->band == band) &&
 		    !(flags & IEEE80211_CHAN_DISABLED) &&
 		    (!!(flags & IEEE80211_CHAN_RADAR) == radar) &&
 		    /* if radar is set, we ignore the passive flag */
 		    (radar ||
-		     !!(flags & IEEE80211_CHAN_PASSIVE_SCAN) == passive)) {
-
-
+		     !!(flags & IEEE80211_CHAN_NO_IR) == passive)) {
 			if (flags & IEEE80211_CHAN_RADAR) {
 				channels[j].flags |= SCAN_CHANNEL_FLAGS_DFS;
 
@@ -221,7 +219,7 @@ wlcore_scan_get_channels(struct wl1271 *wl,
 			    (band == IEEE80211_BAND_2GHZ) &&
 			    (channels[j].channel >= 12) &&
 			    (channels[j].channel <= 14) &&
-			    (flags & IEEE80211_CHAN_PASSIVE_SCAN) &&
+			    (flags & IEEE80211_CHAN_NO_IR) &&
 			    !force_passive) {
 				/* pactive channels treated as DFS */
 				channels[j].flags = SCAN_CHANNEL_FLAGS_DFS;
@@ -235,9 +233,7 @@ wlcore_scan_get_channels(struct wl1271 *wl,
 					     *n_pactive_ch);
 			}
 
-			wl1271_debug(DEBUG_SCAN, "freq %04d, ch. %03d, "
-				     "flags 0x%02X, power %02d, "
-				     "min/max_dwell %02d/%02d%s%s",
+			wl1271_debug(DEBUG_SCAN, "freq %d, ch. %d, flags 0x%x, power %d, min/max_dwell %d/%d%s%s",
 				     req_channels[i]->center_freq,
 				     req_channels[i]->hw_value,
 				     req_channels[i]->flags,
@@ -246,9 +242,8 @@ wlcore_scan_get_channels(struct wl1271 *wl,
 				     max_dwell_time_active,
 				     flags & IEEE80211_CHAN_RADAR ?
 					", DFS" : "",
-				     flags & IEEE80211_CHAN_PASSIVE_SCAN ?
-					", PASSIVE" : "");
-
+				     flags & IEEE80211_CHAN_NO_IR ?
+					", NO-IR" : "");
 			j++;
 		}
 	}

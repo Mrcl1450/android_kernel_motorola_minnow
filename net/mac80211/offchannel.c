@@ -126,9 +126,10 @@ void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local)
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (!ieee80211_sdata_running(sdata))
 			continue;
+
 		if (sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE)
 			continue;
-#if 0
+
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR)
 			set_bit(SDATA_STATE_OFFCHANNEL, &sdata->state);
 
@@ -140,7 +141,7 @@ void ieee80211_offchannel_stop_vifs(struct ieee80211_local *local)
 			ieee80211_bss_info_change_notify(
 				sdata, BSS_CHANGED_BEACON_ENABLED);
 		}
-#endif
+
 		if (sdata->vif.type == NL80211_IFTYPE_STATION &&
 		    sdata->u.mgd.associated)
 			ieee80211_offchannel_ps_enable(sdata);
@@ -159,10 +160,10 @@ void ieee80211_offchannel_return(struct ieee80211_local *local)
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE)
 			continue;
-#if 0
+
 		if (sdata->vif.type != NL80211_IFTYPE_MONITOR)
 			clear_bit(SDATA_STATE_OFFCHANNEL, &sdata->state);
-#endif
+
 		if (!ieee80211_sdata_running(sdata))
 			continue;
 
@@ -170,14 +171,13 @@ void ieee80211_offchannel_return(struct ieee80211_local *local)
 		if (sdata->vif.type == NL80211_IFTYPE_STATION &&
 		    sdata->u.mgd.associated)
 			ieee80211_offchannel_ps_disable(sdata);
-#if 0
+
 		if (test_and_clear_bit(SDATA_STATE_OFFCHANNEL_BEACON_STOPPED,
 				       &sdata->state)) {
 			sdata->vif.bss_conf.enable_beacon = true;
 			ieee80211_bss_info_change_notify(
 				sdata, BSS_CHANGED_BEACON_ENABLED);
 		}
-#endif
 	}
 	mutex_unlock(&local->iflist_mtx);
 
@@ -395,6 +395,8 @@ void ieee80211_sw_roc_work(struct work_struct *work)
 
 		if (started)
 			ieee80211_start_next_roc(local);
+		else if (list_empty(&local->roc_list))
+			ieee80211_run_deferred_scan(local);
 	}
 
  out_unlock:
@@ -418,7 +420,8 @@ static void ieee80211_hw_roc_done(struct work_struct *work)
 	if (!roc->started)
 		goto out_unlock;
 
-	if (local->expired_roc_cookie != (unsigned long) roc)
+	if (local->expired_roc_cookie &&
+	    local->expired_roc_cookie != (unsigned long) roc)
 		goto out_unlock;
 
 	list_del(&roc->list);

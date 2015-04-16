@@ -101,7 +101,7 @@ static void wl1271_tx_ap_update_inconnection_sta(struct wl1271 *wl,
 	 * authentication response. this way it won't get de-authed by FW
 	 * when transmitting too soon.
 	 */
-	wl1271_acx_set_inconnection_sta(wl, hdr->addr1);
+	wl1271_acx_set_inconnection_sta(wl, wlvif, hdr->addr1);
 
 	/*
 	 * ROC for 1 second on the AP channel for completing the connection.
@@ -126,7 +126,7 @@ static void wl1271_tx_regulate_link(struct wl1271 *wl,
 	if (WARN_ON(!test_bit(hlid, wlvif->links_map)))
 		return;
 
-	fw_ps = test_bit(hlid, (unsigned long *)&wl->ap_fw_ps_map);
+	fw_ps = test_bit(hlid, &wl->ap_fw_ps_map);
 	tx_pkts = wl->links[hlid].allocated_pkts;
 
 	/*
@@ -363,7 +363,7 @@ static void wl1271_tx_fill_hdr(struct wl1271 *wl, struct wl12xx_vif *wlvif,
 		tx_attr |= TX_HW_ATTR_HOST_ENCRYPT;
 
 	/* send EAPOL frames as voice */
-	if (skb->protocol == cpu_to_be16(ETH_P_PAE))
+	if (control->control.flags & IEEE80211_TX_CTRL_PORT_CTRL_PROTO)
 		tx_attr |= TX_HW_ATTR_EAPOL_FRAME;
 
 	desc->tx_attr = cpu_to_le16(tx_attr);

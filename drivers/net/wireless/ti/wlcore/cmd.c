@@ -60,8 +60,8 @@ static int __wlcore_cmd_send(struct wl1271 *wl, u16 id, void *buf,
 	u16 status;
 	u16 poll_count = 0;
 
-	if (unlikely(wl->state == WLCORE_STATE_RESTARTING) &&
-		     id != CMD_STOP_FWLOGGER)
+	if (unlikely(wl->state == WLCORE_STATE_RESTARTING &&
+		     id != CMD_STOP_FWLOGGER))
 		return -EIO;
 
 	cmd = buf;
@@ -324,8 +324,13 @@ int wl12xx_allocate_link(struct wl1271 *wl, struct wl12xx_vif *wlvif, u8 *hlid)
 	__set_bit(link, wlvif->links_map);
 	spin_unlock_irqrestore(&wl->wl_lock, flags);
 
-	/* take the last "freed packets" value from the current FW status */
-	wl->links[link].prev_freed_pkts =
+	/*
+	 * take the last "freed packets" value from the current FW status.
+	 * on recovery, we might not have fw_status yet, and
+	 * tx_lnk_free_pkts will be NULL. check for it.
+	 */
+	if (wl->fw_status->counters.tx_lnk_free_pkts)
+		wl->links[link].prev_freed_pkts =
 			wl->fw_status->counters.tx_lnk_free_pkts[link];
 	wl->links[link].wlvif = wlvif;
 
@@ -1529,6 +1534,7 @@ int wl12xx_cmd_add_peer(struct wl1271 *wl, struct wl12xx_vif *wlvif,
 	cmd->sp_len = sta->max_sp;
 	cmd->wmm = sta->wme ? 1 : 0;
 	cmd->session_id = wl->session_ids[hlid];
+	cmd->role_id = wlvif->role_id;
 
 	for (i = 0; i < NUM_ACCESS_CATEGORIES_COPY; i++)
 		if (sta->wme && (sta->uapsd_queues & BIT(i)))
@@ -1565,7 +1571,8 @@ out:
 	return ret;
 }
 
-int wl12xx_cmd_remove_peer(struct wl1271 *wl, u8 hlid)
+int wl12xx_cmd_remove_peer(struct wl1271 *wl, struct wl12xx_vif *wlvif,
+			   u8 hlid)
 {
 	struct wl12xx_cmd_remove_peer *cmd;
 	int ret;
@@ -1583,6 +1590,7 @@ int wl12xx_cmd_remove_peer(struct wl1271 *wl, u8 hlid)
 	/* We never send a deauth, mac80211 is in charge of this */
 	cmd->reason_opcode = 0;
 	cmd->send_deauth_flag = 0;
+	cmd->role_id = wlvif->role_id;
 
 	ret = wl1271_cmd_send(wl, CMD_REMOVE_PEER, cmd, sizeof(*cmd), 0);
 	if (ret < 0) {
@@ -1611,35 +1619,43 @@ out:
 
 static int wlcore_get_reg_conf_ch_idx(enum ieee80211_band band, u16 ch)
 {
-	int idx = -1;
-
+	/*
+	 * map the given band/channel to the respective predefined
+	 * bit expected by the fw
+	 */
 	switch (band) {
-	case IEEE80211_BAND_5GHZ:
-		if (ch >= 8 && ch <= 16)
-			idx = ((ch-8)/4 + 18);
-		else if (ch >= 34 && ch <= 48)
-			idx = ((ch-34)/2 + 3 + 18);
-		else if (ch >= 52 && ch <= 64)
-			idx = ((ch-52)/4 + 11 + 18);
-		else if (ch >= 100 && ch <= 140)
-			idx = ((ch-100)/4 + 15 + 18);
-		else if (ch >= 149 && ch <= 165)
-			idx = ((ch-149)/4 + 26 + 18);
-		else
-			idx = -1;
-		break;
 	case IEEE80211_BAND_2GHZ:
+		/* channels 1..14 are mapped to 0..13 */
 		if (ch >= 1 && ch <= 14)
-			idx = ch - 1;
-		else
-			idx = -1;
+			return ch - 1;
+		break;
+	case IEEE80211_BAND_5GHZ:
+		switch (ch) {
+		case 8 ... 16:
+			/* channels 8,12,16 are mapped to 18,19,20 */
+			return 18 + (ch-8)/4;
+		case 34 ... 48:
+			/* channels 34,36..48 are mapped to 21..28 */
+			return 21 + (ch-34)/2;
+		case 52 ... 64:
+			/* channels 52,56..64 are mapped to 29..32 */
+			return 29 + (ch-52)/4;
+		case 100 ... 140:
+			/* channels 100,104..140 are mapped to 33..43 */
+			return 33 + (ch-100)/4;
+		case 149 ... 165:
+			/* channels 149,153..165 are mapped to 44..48 */
+			return 44 + (ch-149)/4;
+		default:
+			break;
+		}
 		break;
 	default:
-		wl1271_error("get reg conf ch idx - unknown band: %d",
-			     (int)band);
+		break;
 	}
 
-	return idx;
+	wl1271_error("%s: unknown band/channel: %d/%d", __func__, band, ch);
+	return -1;
 }
 
 void wlcore_set_pending_regdomain_ch(struct wl1271 *wl, u16 channel,
@@ -1652,7 +1668,7 @@ void wlcore_set_pending_regdomain_ch(struct wl1271 *wl, u16 channel,
 
 	ch_bit_idx = wlcore_get_reg_conf_ch_idx(band, channel);
 
-	if (ch_bit_idx > 0 && ch_bit_idx <= WL1271_MAX_CHANNELS)
+	if (ch_bit_idx >= 0 && ch_bit_idx <= WL1271_MAX_CHANNELS)
 		set_bit(ch_bit_idx, (long *)wl->reg_ch_conf_pending);
 }
 
@@ -1680,9 +1696,15 @@ int wlcore_cmd_regdomain_config_locked(struct wl1271 *wl)
 			channel = &band->channels[i];
 			ch = channel->hw_value;
 
-			if (channel->flags & (IEEE80211_CHAN_DISABLED |
-					      IEEE80211_CHAN_RADAR |
-					      IEEE80211_CHAN_PASSIVE_SCAN))
+			if (channel->flags & IEEE80211_CHAN_DISABLED)
+				continue;
+
+			if ((channel->flags & IEEE80211_CHAN_NO_IR) &&
+			    !(channel->flags & IEEE80211_CHAN_RADAR))
+				continue;
+
+			if ((channel->flags & IEEE80211_CHAN_RADAR) &&
+			    channel->dfs_state != NL80211_DFS_AVAILABLE)
 				continue;
 
 			ch_bit_idx = wlcore_get_reg_conf_ch_idx(b, ch);
@@ -1707,6 +1729,7 @@ int wlcore_cmd_regdomain_config_locked(struct wl1271 *wl)
 
 	cmd->ch_bit_map1 = cpu_to_le32(tmp_ch_bitmap[0]);
 	cmd->ch_bit_map2 = cpu_to_le32(tmp_ch_bitmap[1]);
+	cmd->dfs_region = wl->dfs_region;
 
 	wl1271_debug(DEBUG_CMD,
 		     "cmd reg domain bitmap1: 0x%08x, bitmap2: 0x%08x",
@@ -2035,3 +2058,114 @@ int wl12xx_stop_dev(struct wl1271 *wl, struct wl12xx_vif *wlvif)
 out:
 	return ret;
 }
+
+int wlcore_set_cac(struct wl1271 *wl, struct wl12xx_vif *wlvif, bool start)
+{
+	struct wlcore_cmd_cac_start *cmd;
+	int ret = 0;
+
+	wl1271_debug(DEBUG_CMD, "cmd cac (channel %d) %s",
+		     wlvif->channel, start ? "start" : "stop");
+
+	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->role_id = wlvif->role_id;
+	cmd->channel = wlvif->channel;
+	if (wlvif->band == IEEE80211_BAND_5GHZ)
+		cmd->band = WLCORE_BAND_5GHZ;
+	/* TODO: bandwidth == channel_type? */
+	cmd->bandwidth = wlcore_get_native_channel_type(wlvif->channel_type);
+
+	ret = wl1271_cmd_send(wl, start ? CMD_CAC_START : CMD_CAC_STOP,
+			      cmd, sizeof(*cmd), 0);
+	if (ret < 0) {
+		wl1271_error("failed to send cac command");
+		goto out_free;
+	}
+out_free:
+	kfree(cmd);
+	return ret;
+}
+
+int wlcore_radar_detection_debug(struct wl1271 *wl, u8 channel)
+{
+	struct wlcore_cmd_dfs_radar_detection_cmd *cmd;
+	int ret = 0;
+
+	wl1271_debug(DEBUG_CMD, "cmd radar detection debug (chan %d)",
+		     channel);
+
+	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->channel = channel;
+
+	ret = wl1271_cmd_send(wl, CMD_DFS_RADAR_DETECTION_DEBUG,
+			      cmd, sizeof(*cmd), 0);
+	if (ret < 0) {
+		wl1271_error("failed to send radar detection debug command");
+		goto out_free;
+	}
+out_free:
+	kfree(cmd);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(wlcore_radar_detection_debug);
+
+int wlcore_cmd_dfs_master_restart(struct wl1271 *wl, struct wl12xx_vif *wlvif)
+{
+	struct wlcore_cmd_dfs_master_restart *cmd;
+	int ret = 0;
+
+	wl1271_debug(DEBUG_CMD, "cmd dfs master restart (role %d)",
+		     wlvif->role_id);
+
+	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->role_id = wlvif->role_id;
+
+	ret = wl1271_cmd_send(wl, CMD_DFS_MASTER_RESTART,
+			      cmd, sizeof(*cmd), 0);
+	if (ret < 0) {
+		wl1271_error("failed to send dfs master restart command");
+		goto out_free;
+	}
+out_free:
+	kfree(cmd);
+	return ret;
+}
+
+int wlcore_cmd_generic_cfg(struct wl1271 *wl, struct wl12xx_vif *wlvif,
+			   u8 feature, u8 enable, u8 value)
+{
+	struct wlcore_cmd_generic_cfg *cmd;
+	int ret;
+
+	wl1271_debug(DEBUG_CMD,
+		     "cmd generic cfg (role %d feature %d enable %d value %d)",
+		     wlvif->role_id, feature, enable, value);
+
+	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->role_id = wlvif->role_id;
+	cmd->feature = feature;
+	cmd->enable = enable;
+	cmd->value = value;
+
+	ret = wl1271_cmd_send(wl, CMD_GENERIC_CFG, cmd, sizeof(*cmd), 0);
+	if (ret < 0) {
+		wl1271_error("failed to send generic cfg command");
+		goto out_free;
+	}
+out_free:
+	kfree(cmd);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(wlcore_cmd_generic_cfg);

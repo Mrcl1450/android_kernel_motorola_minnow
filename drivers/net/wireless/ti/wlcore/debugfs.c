@@ -741,7 +741,7 @@ static ssize_t driver_state_read(struct file *file, char __user *user_buf,
 	DRIVER_STATE_PRINT_INT(sg_enabled);
 	DRIVER_STATE_PRINT_INT(enable_11a);
 	DRIVER_STATE_PRINT_INT(noise);
-	DRIVER_STATE_PRINT_HEX(ap_fw_ps_map);
+	DRIVER_STATE_PRINT_LHEX(ap_fw_ps_map);
 	DRIVER_STATE_PRINT_LHEX(ap_ps_map);
 	DRIVER_STATE_PRINT_HEX(quirks);
 	DRIVER_STATE_PRINT_HEX(irq);
@@ -1317,7 +1317,7 @@ static ssize_t dev_mem_read(struct file *file,
 		return -EINVAL;
 
 	memset(&part, 0, sizeof(part));
-	part.mem.start = file->f_pos;
+	part.mem.start = *ppos;
 	part.mem.size = bytes;
 
 	buf = kmalloc(bytes, GFP_KERNEL);
@@ -1398,7 +1398,7 @@ static ssize_t dev_mem_write(struct file *file, const char __user *user_buf,
 		return -EINVAL;
 
 	memset(&part, 0, sizeof(part));
-	part.mem.start = file->f_pos;
+	part.mem.start = *ppos;
 	part.mem.size = bytes;
 
 	buf = kmalloc(bytes, GFP_KERNEL);

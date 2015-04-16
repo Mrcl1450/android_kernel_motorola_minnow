@@ -26,10 +26,10 @@
 
 /* minimum FW required for driver */
 #define WL18XX_CHIP_VER		8
-#define WL18XX_IFTYPE_VER	6
+#define WL18XX_IFTYPE_VER	9
 #define WL18XX_MAJOR_VER	WLCORE_FW_VER_IGNORE
 #define WL18XX_SUBTYPE_VER	WLCORE_FW_VER_IGNORE
-#define WL18XX_MINOR_VER	8
+#define WL18XX_MINOR_VER	11
 
 #define WL18XX_CMD_MAX_SIZE          740
 
@@ -38,11 +38,12 @@
 #define WL18XX_NUM_TX_DESCRIPTORS 32
 #define WL18XX_NUM_RX_DESCRIPTORS 32
 
-#define WL18XX_NUM_MAC_ADDRESSES 3
+#define WL18XX_NUM_MAC_ADDRESSES 2
 
-#define WL18XX_RX_BA_MAX_SESSIONS 8
+#define WL18XX_RX_BA_MAX_SESSIONS 13
 
-#define WL18XX_MAX_LINKS 12
+#define WL18XX_MAX_AP_STATIONS 10
+#define WL18XX_MAX_LINKS 16
 
 struct wl18xx_priv {
 	/* buffer for sending commands to FW */

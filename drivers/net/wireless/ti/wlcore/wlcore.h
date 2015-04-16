@@ -106,8 +106,7 @@ struct wlcore_ops {
 			      struct wl12xx_vif *wlvif,
 			      struct ieee80211_channel_switch *ch_switch);
 	u32 (*pre_pkt_send)(struct wl1271 *wl, u32 buf_offset, u32 last_len);
-	void (*sta_rc_update)(struct wl1271 *wl, struct wl12xx_vif *wlvif,
-			      struct ieee80211_sta *sta, u32 changed);
+	void (*sta_rc_update)(struct wl1271 *wl, struct wl12xx_vif *wlvif);
 	int (*set_peer_cap)(struct wl1271 *wl,
 			    struct ieee80211_sta_ht_cap *ht_cap,
 			    bool allow_ht_operation,
@@ -117,6 +116,9 @@ struct wlcore_ops {
 			      struct wl1271_link *lnk);
 	bool (*lnk_low_prio)(struct wl1271 *wl, u8 hlid,
 			     struct wl1271_link *lnk);
+	int (*interrupt_notify)(struct wl1271 *wl, bool action);
+	int (*rx_ba_filter)(struct wl1271 *wl, bool action);
+	int (*ap_sleep)(struct wl1271 *wl);
 	int (*smart_config_start)(struct wl1271 *wl, u32 group_bitmap);
 	int (*smart_config_stop)(struct wl1271 *wl);
 	int (*smart_config_set_group_key)(struct wl1271 *wl, u16 group_id,
@@ -402,10 +404,10 @@ struct wl1271 {
 	int active_link_count;
 
 	/* Fast/slow links bitmap according to FW */
-	u32 fw_fast_lnk_map;
+	unsigned long fw_fast_lnk_map;
 
 	/* AP-mode - a bitmap of links currently in PS mode according to FW */
-	u32 ap_fw_ps_map;
+	unsigned long ap_fw_ps_map;
 
 	/* AP-mode - a bitmap of links currently in PS mode in mac80211 */
 	unsigned long ap_ps_map;
@@ -459,6 +461,8 @@ struct wl1271 {
 	u32 num_rx_desc;
 	/* number of links the HW supports */
 	u8 num_links;
+	/* max stations a single AP can support */
+	u8 max_ap_stations;
 
 	/* translate HW Tx rates to standard rate-indices */
 	const u8 **band_rate_to_idx;
@@ -477,7 +481,7 @@ struct wl1271 {
 	size_t fw_status_priv_len;
 
 	/* RX Data filter rule state - enabled/disabled */
-	bool rx_filter_enabled[WL1271_MAX_RX_FILTERS];
+	unsigned long rx_filter_enabled[BITS_TO_LONGS(WL1271_MAX_RX_FILTERS)];
 
 	/* size of the private static data */
 	size_t static_data_priv_len;
@@ -502,8 +506,9 @@ struct wl1271 {
 
 	struct completion nvs_loading_complete;
 
-	/* number of concurrent channels the HW supports */
-	u32 num_channels;
+	/* interface combinations supported by the hw */
+	const struct ieee80211_iface_combination *iface_combinations;
+	u8 n_iface_combinations;
 
 	struct wlcore_aggr_reason *aggr_pkts_reason;
 	u32 aggr_pkts_reason_num;
@@ -513,6 +518,10 @@ struct wl1271 {
 
 	u32 irq_count;
 	u32 irq_loop_count;
+
+	/* the current dfs region */
+	enum nl80211_dfs_regions dfs_region;
+	bool radar_debug_mode;
 };
 
 int wlcore_probe(struct wl1271 *wl, struct platform_device *pdev);
