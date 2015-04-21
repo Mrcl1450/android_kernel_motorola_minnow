@@ -221,6 +221,7 @@ static ssize_t m4als_setrate_store(struct device *dev,
 	int value = 0;
 	int regsize = 0;
 	uint16_t luminosity = 0;
+	struct timespec ts;
 
 	mutex_lock(&(dd->mutex));
 
@@ -242,6 +243,10 @@ static ssize_t m4als_setrate_store(struct device *dev,
 		m4als_err("%s: Failed to set sample rate.\n", __func__);
 		goto m4als_enable_store_exit;
 	}
+
+	/* If the sensor is being disabled, skip reading a raw value  */
+	if (value == -1)
+		goto m4als_enable_store_exit;
 
 	/* Read and send raw value for gesture wakeup */
 	msleep(120);
@@ -266,6 +271,9 @@ static ssize_t m4als_setrate_store(struct device *dev,
 
 	dd->luminosity = luminosity;
 
+	get_monotonic_boottime(&ts);
+	input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_sec);
+	input_event(dd->indev, EV_MSC, MSC_TIMESTAMP, ts.tv_nsec);
 	input_event(dd->indev, EV_MSC, MSC_RAW, dd->luminosity);
 	input_sync(dd->indev);
 
