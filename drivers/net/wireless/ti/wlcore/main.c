@@ -1569,8 +1569,9 @@ void wl1271_rx_filter_flatten_fields(struct wl12xx_rx_filter *filter,
  * which needs to be freed using rx_filter_free()
  */
 static int
-wl1271_convert_wowlan_pattern_to_rx_filter(struct cfg80211_pkt_pattern *p,
-					   struct wl12xx_rx_filter **f)
+wl1271_convert_pkt_pattern_to_rx_filter(struct cfg80211_pkt_pattern *p,
+					struct wl12xx_rx_filter **f,
+					enum rx_filter_action rx_action)
 {
 	int i, j, ret = 0;
 	struct wl12xx_rx_filter *filter;
@@ -1620,7 +1621,7 @@ wl1271_convert_wowlan_pattern_to_rx_filter(struct cfg80211_pkt_pattern *p,
 		i = j;
 	}
 
-	filter->action = FILTER_SIGNAL;
+	filter->action = rx_action;
 
 	*f = filter;
 	return 0;
@@ -1632,12 +1633,21 @@ err:
 	return ret;
 }
 
-static int wl1271_configure_wowlan(struct wl1271 *wl,
-				   struct cfg80211_wowlan *wow)
+static int
+wlcore_configure_pkt_patterns(struct wl1271 *wl,
+			      struct cfg80211_pkt_pattern *patterns,
+			      int n_patterns,
+			      enum rx_filter_action default_action)
 {
 	int i, ret;
+	enum rx_filter_action filter_action;
 
-	if (!wow || wow->any || !wow->n_patterns) {
+	if (default_action == FILTER_DROP)
+		filter_action = FILTER_SIGNAL;
+	else
+		filter_action = FILTER_DROP;
+
+	if (!n_patterns) {
 		ret = wl1271_acx_default_rx_filter_enable(wl, 0,
 							  FILTER_SIGNAL);
 		if (ret)
@@ -1650,14 +1660,14 @@ static int wl1271_configure_wowlan(struct wl1271 *wl,
 		return 0;
 	}
 
-	if (WARN_ON(wow->n_patterns > WL1271_MAX_RX_FILTERS))
+	if (WARN_ON(n_patterns > WL1271_MAX_RX_FILTERS))
 		return -EINVAL;
 
 	/* Validate all incoming patterns before clearing current FW state */
-	for (i = 0; i < wow->n_patterns; i++) {
-		ret = wl1271_validate_wowlan_pattern(&wow->patterns[i]);
+	for (i = 0; i < n_patterns; i++) {
+		ret = wl1271_validate_wowlan_pattern(&patterns[i]);
 		if (ret) {
-			wl1271_warning("Bad wowlan pattern %d", i);
+			wl1271_warning("Bad pkt pattern %d", i);
 			return ret;
 		}
 	}
@@ -1671,16 +1681,17 @@ static int wl1271_configure_wowlan(struct wl1271 *wl,
 		goto out;
 
 	/* Translate WoWLAN patterns into filters */
-	for (i = 0; i < wow->n_patterns; i++) {
+	for (i = 0; i < n_patterns; i++) {
 		struct cfg80211_pkt_pattern *p;
 		struct wl12xx_rx_filter *filter = NULL;
 
-		p = &wow->patterns[i];
+		p = &patterns[i];
 
-		ret = wl1271_convert_wowlan_pattern_to_rx_filter(p, &filter);
+		ret = wl1271_convert_pkt_pattern_to_rx_filter(p, &filter,
+							      filter_action);
 		if (ret) {
-			wl1271_warning("Failed to create an RX filter from "
-				       "wowlan pattern %d", i);
+			wl1271_warning("Failed to create an RX filter from pkt pattern %d",
+				       i);
 			goto out;
 		}
 
@@ -1691,7 +1702,7 @@ static int wl1271_configure_wowlan(struct wl1271 *wl,
 			goto out;
 	}
 
-	ret = wl1271_acx_default_rx_filter_enable(wl, 1, FILTER_DROP);
+	ret = wl1271_acx_default_rx_filter_enable(wl, 1, default_action);
 
 out:
 	return ret;
@@ -1708,9 +1719,13 @@ static int wl1271_configure_suspend_sta(struct wl1271 *wl,
 	if (!test_bit(WLVIF_FLAG_STA_ASSOCIATED, &wlvif->flags))
 		goto out;
 
-	ret = wl1271_configure_wowlan(wl, wow);
-	if (ret < 0)
-		goto out;
+	if (wow->n_patterns) {
+		ret = wlcore_configure_pkt_patterns(wl, wow->patterns,
+						    wow->n_patterns,
+						    FILTER_DROP);
+		if (ret < 0)
+			goto out;
+	}
 
 	/*
 	 * When system is in suspend state and DTIM is set to a relatively
@@ -1770,9 +1785,14 @@ static int wl1271_configure_suspend_ap(struct wl1271 *wl,
 	if (ret < 0)
 		goto out;
 
-	ret = wl1271_configure_wowlan(wl, wow);
-	if (ret < 0)
-		goto out;
+	if (wow->n_patterns) {
+		ret = wlcore_configure_pkt_patterns(wl, wow->patterns,
+						    wow->n_patterns,
+						    FILTER_DROP);
+		if (ret < 0)
+			goto out;
+	}
+
 out:
 	return ret;
 
@@ -1802,7 +1822,10 @@ static void wl1271_configure_resume(struct wl1271 *wl, struct wl12xx_vif *wlvif)
 	    (is_ap && !test_bit(WLVIF_FLAG_AP_STARTED, &wlvif->flags)))
 		return;
 
-	wl1271_configure_wowlan(wl, NULL);
+	if (wl->hw->wiphy->wowlan_config->n_patterns) {
+		/* remove configured filters. TODO: re-configure coalesce. */
+		wlcore_configure_pkt_patterns(wl, NULL, 0, FILTER_SIGNAL);
+	}
 
 	if (is_sta) {
 		if ((wl->conf.conn.suspend_wake_up_event ==
@@ -5798,6 +5821,59 @@ out:
 	return ret;
 }
 
+static struct wiphy_coalesce_support wlcore_coalesce = {
+	.n_rules = WL1271_MAX_RX_FILTERS,
+	.n_patterns = 1,
+	.pattern_max_len = WL1271_RX_FILTER_MAX_PATTERN_SIZE,
+	.pattern_min_len = 1
+};
+
+static int wlcore_op_set_coalesce(struct ieee80211_hw *hw,
+				  struct cfg80211_coalesce *coalesce)
+{
+	struct wl1271 *wl = hw->priv;
+	struct cfg80211_pkt_pattern patterns[WL1271_MAX_RX_FILTERS];
+	int i, ret;
+	int n_rules = coalesce ? coalesce->n_rules : 0;
+
+	wl1271_debug(DEBUG_MAC80211, "mac80211 coalesce: n_rules=%d",
+		     n_rules);
+
+	if (WARN_ON(n_rules > WL1271_MAX_RX_FILTERS))
+		return -EINVAL;
+
+	mutex_lock(&wl->mutex);
+
+	if (unlikely(wl->state != WLCORE_STATE_ON)) {
+		ret = -EBUSY;
+		goto out;
+	}
+
+	ret = wl1271_ps_elp_wakeup(wl);
+	if (ret < 0)
+		goto out;
+
+	/*
+	 * we have a single pattern per rules, so convert
+	 * it to a list of pkt patterns
+	 */
+	for (i = 0; i < n_rules; i++) {
+		struct cfg80211_coalesce_rules *rule = &coalesce->rules[i];
+
+		if (WARN_ON(rule->n_patterns != 1))
+			goto out;
+
+		patterns[i] = rule->patterns[0];
+	}
+
+	wlcore_configure_pkt_patterns(wl, patterns, n_rules, FILTER_SIGNAL);
+
+	wl1271_ps_elp_sleep(wl);
+out:
+	mutex_unlock(&wl->mutex);
+	return ret;
+}
+
 static bool wl1271_tx_frames_pending(struct ieee80211_hw *hw)
 {
 	struct wl1271 *wl = hw->priv;
@@ -5985,6 +6061,7 @@ static const struct ieee80211_ops wl1271_ops = {
 	.tx_frames_pending = wl1271_tx_frames_pending,
 	.set_bitrate_mask = wl12xx_set_bitrate_mask,
 	.set_default_unicast_key = wl1271_op_set_default_key_idx,
+	.set_coalesce = wlcore_op_set_coalesce,
 	.channel_switch = wl12xx_op_channel_switch,
 	.channel_switch_beacon = wlcore_op_channel_switch_beacon,
 	.flush = wlcore_op_flush,
@@ -6258,6 +6335,8 @@ static int wl1271_init_ieee80211(struct wl1271 *wl)
 	wl->hw->max_rates = 1;
 
 	wl->hw->wiphy->reg_notifier = wl1271_reg_notify;
+
+	wl->hw->wiphy->coalesce = &wlcore_coalesce;
 
 	/* the FW answers probe-requests in AP-mode */
 	wl->hw->wiphy->flags |= WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD;

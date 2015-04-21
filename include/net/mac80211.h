@@ -2901,6 +2901,9 @@ struct ieee80211_ops {
 			      struct ieee80211_vif *vif,
 			      enum ieee80211_rssi_event rssi_event);
 
+	int (*set_coalesce)(struct ieee80211_hw *hw,
+			    struct cfg80211_coalesce *coalesce);
+
 	void (*allow_buffered_frames)(struct ieee80211_hw *hw,
 				      struct ieee80211_sta *sta,
 				      u16 tids, int num_frames,

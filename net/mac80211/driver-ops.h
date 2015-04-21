@@ -882,6 +882,18 @@ static inline void drv_rssi_callback(struct ieee80211_local *local,
 	trace_drv_return_void(local);
 }
 
+static inline int drv_set_coalesce(struct ieee80211_local *local,
+				   struct cfg80211_coalesce *coalesce)
+{
+	int ret = -EOPNOTSUPP;
+
+	/* TODO: add tracing */
+	if (local->ops->set_coalesce)
+		ret = local->ops->set_coalesce(&local->hw, coalesce);
+
+	return ret;
+}
+
 static inline void
 drv_release_buffered_frames(struct ieee80211_local *local,
 			    struct sta_info *sta, u16 tids, int num_frames,
