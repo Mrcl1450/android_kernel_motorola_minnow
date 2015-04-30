@@ -5983,7 +5983,12 @@ static int nl80211_send_bss(struct sk_buff *msg, struct netlink_callback *cb,
 	const struct cfg80211_bss_ies *ies;
 	void *hdr;
 	struct nlattr *bss;
+#ifndef CONFIG_ANDROID
 	bool tsf = false;
+#else
+	struct timespec ts;
+	int timestamp;
+#endif
 
 	ASSERT_WDEV_LOCK(wdev);
 
@@ -6012,17 +6017,21 @@ static int nl80211_send_bss(struct sk_buff *msg, struct netlink_callback *cb,
 	rcu_read_lock();
 	ies = rcu_dereference(res->ies);
 	if (ies) {
+#ifndef CONFIG_ANDROID
 		if (nla_put_u64(msg, NL80211_BSS_TSF, ies->tsf))
 			goto fail_unlock_rcu;
 		tsf = true;
+#endif
 		if (ies->len && nla_put(msg, NL80211_BSS_INFORMATION_ELEMENTS,
 					ies->len, ies->data))
 			goto fail_unlock_rcu;
 	}
 	ies = rcu_dereference(res->beacon_ies);
 	if (ies) {
+#ifndef CONFIG_ANDROID
 		if (!tsf && nla_put_u64(msg, NL80211_BSS_TSF, ies->tsf))
 			goto fail_unlock_rcu;
+#endif
 		if (ies->len && nla_put(msg, NL80211_BSS_BEACON_IES,
 					ies->len, ies->data))
 			goto fail_unlock_rcu;
@@ -6038,6 +6047,18 @@ static int nl80211_send_bss(struct sk_buff *msg, struct netlink_callback *cb,
 	    nla_put_u32(msg, NL80211_BSS_SEEN_MS_AGO,
 			jiffies_to_msecs(jiffies - intbss->ts)))
 		goto nla_put_failure;
+
+#ifdef CONFIG_ANDROID
+	/* Android's framework expects tsf to be "timestamp in microseconds
+	 * (since boot) when this result was last seen.".
+	 * Until Android's framework is fixed, change the returned TSF to match
+	 * the above definition.
+	 */
+	get_monotonic_boottime(&ts);
+	timestamp = timespec_to_jiffies(&ts) - (jiffies - intbss->ts);
+	if (nla_put_u64(msg, NL80211_BSS_TSF, jiffies_to_usecs(timestamp)))
+		goto nla_put_failure;
+#endif
 
 	switch (rdev->wiphy.signal_type) {
 	case CFG80211_SIGNAL_TYPE_MBM:
