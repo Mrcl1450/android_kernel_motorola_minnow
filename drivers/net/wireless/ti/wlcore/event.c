@@ -226,14 +226,8 @@ EXPORT_SYMBOL_GPL(wlcore_event_roc_complete);
 
 void wlcore_event_beacon_loss(struct wl1271 *wl, unsigned long roles_bitmap)
 {
-	/*
-	 * We are HW_MONITOR device. On beacon loss - queue
-	 * connection loss work. Cancel it on REGAINED event.
-	 */
 	struct wl12xx_vif *wlvif;
 	struct ieee80211_vif *vif;
-	int delay = wl->conf.conn.synch_fail_thold *
-				wl->conf.conn.bss_lose_timeout;
 
 	wl1271_info("Beacon loss detected. roles:0x%lx", roles_bitmap);
 
@@ -243,26 +237,7 @@ void wlcore_event_beacon_loss(struct wl1271 *wl, unsigned long roles_bitmap)
 			continue;
 
 		vif = wl12xx_wlvif_to_vif(wlvif);
-
-		/* don't attempt roaming in case of p2p */
-		if (wlvif->p2p) {
-			ieee80211_connection_loss(vif);
-			continue;
-		}
-
-		/*
-		 * if the work is already queued, it should take place.
-		 * We don't want to delay the connection loss
-		 * indication any more.
-		 */
-		ieee80211_queue_delayed_work(wl->hw,
-					     &wlvif->connection_loss_work,
-					     msecs_to_jiffies(delay));
-
-		ieee80211_cqm_rssi_notify(
-				vif,
-				NL80211_CQM_RSSI_BEACON_LOSS_EVENT,
-				GFP_KERNEL);
+		ieee80211_connection_loss(vif);
 	}
 }
 EXPORT_SYMBOL_GPL(wlcore_event_beacon_loss);

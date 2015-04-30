@@ -2205,34 +2205,6 @@ out:
 	mutex_unlock(&wl->mutex);
 }
 
-static void wlcore_connection_loss_work(struct work_struct *work)
-{
-	struct delayed_work *dwork;
-	struct wl1271 *wl;
-	struct ieee80211_vif *vif;
-	struct wl12xx_vif *wlvif;
-
-	dwork = container_of(work, struct delayed_work, work);
-	wlvif = container_of(dwork, struct wl12xx_vif, connection_loss_work);
-	wl = wlvif->wl;
-
-	wl1271_info("Connection loss work (role_id: %d).", wlvif->role_id);
-
-	mutex_lock(&wl->mutex);
-
-	if (unlikely(wl->state != WLCORE_STATE_ON))
-		goto out;
-
-	/* Call mac80211 connection loss */
-	if (!test_bit(WLVIF_FLAG_STA_ASSOCIATED, &wlvif->flags))
-		goto out;
-
-	vif = wl12xx_wlvif_to_vif(wlvif);
-	ieee80211_connection_loss(vif);
-out:
-	mutex_unlock(&wl->mutex);
-}
-
 static void wlcore_pending_auth_complete_work(struct work_struct *work)
 {
 	struct delayed_work *dwork;
@@ -2424,8 +2396,6 @@ static int wl12xx_init_vif_data(struct wl1271 *wl, struct ieee80211_vif *vif)
 	INIT_WORK(&wlvif->rc_update_work, wlcore_rc_update_work);
 	INIT_DELAYED_WORK(&wlvif->channel_switch_work,
 			  wlcore_channel_switch_work);
-	INIT_DELAYED_WORK(&wlvif->connection_loss_work,
-			  wlcore_connection_loss_work);
 	INIT_DELAYED_WORK(&wlvif->pending_auth_complete_work,
 			  wlcore_pending_auth_complete_work);
 	INIT_LIST_HEAD(&wlvif->list);
@@ -2886,7 +2856,6 @@ unlock:
 	cancel_work_sync(&wlvif->rx_streaming_enable_work);
 	cancel_work_sync(&wlvif->rx_streaming_disable_work);
 	cancel_work_sync(&wlvif->rc_update_work);
-	cancel_delayed_work_sync(&wlvif->connection_loss_work);
 	cancel_delayed_work_sync(&wlvif->channel_switch_work);
 	cancel_delayed_work_sync(&wlvif->pending_auth_complete_work);
 
@@ -4704,13 +4673,6 @@ static void wl1271_op_bss_info_changed(struct ieee80211_hw *hw,
 
 	if (vif->dummy_p2p)
 		return;
-
-	/*
-	 * make sure to cancel pending disconnections if our association
-	 * state changed
-	 */
-	if (!is_ap && (changed & BSS_CHANGED_ASSOC))
-		cancel_delayed_work_sync(&wlvif->connection_loss_work);
 
 	if (is_ap && (changed & BSS_CHANGED_BEACON_ENABLED) &&
 	    !bss_conf->enable_beacon)
