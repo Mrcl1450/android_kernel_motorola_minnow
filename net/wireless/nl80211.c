@@ -5986,8 +5986,7 @@ static int nl80211_send_bss(struct sk_buff *msg, struct netlink_callback *cb,
 #ifndef CONFIG_ANDROID
 	bool tsf = false;
 #else
-	struct timespec ts;
-	int timestamp;
+	struct timespec boottime, bss_age, lastseen;
 #endif
 
 	ASSERT_WDEV_LOCK(wdev);
@@ -6054,9 +6053,12 @@ static int nl80211_send_bss(struct sk_buff *msg, struct netlink_callback *cb,
 	 * Until Android's framework is fixed, change the returned TSF to match
 	 * the above definition.
 	 */
-	get_monotonic_boottime(&ts);
-	timestamp = timespec_to_jiffies(&ts) - (jiffies - intbss->ts);
-	if (nla_put_u64(msg, NL80211_BSS_TSF, jiffies_to_usecs(timestamp)))
+	get_monotonic_boottime(&boottime);
+	jiffies_to_timespec((long)jiffies - (long)intbss->ts, &bss_age);
+	lastseen = timespec_sub(boottime, bss_age);
+	if (nla_put_u64(msg, NL80211_BSS_TSF,
+			(((u64) lastseen.tv_sec * USEC_PER_SEC) +
+			 lastseen.tv_nsec / NSEC_PER_USEC)))
 		goto nla_put_failure;
 #endif
 
