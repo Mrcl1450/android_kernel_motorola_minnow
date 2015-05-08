@@ -42,6 +42,7 @@
 #include "hw_ops.h"
 #include "sysfs.h"
 #include "version.h"
+#include <linux/wakeup_reason.h>
 
 #define WL1271_BOOT_RETRIES 3
 
@@ -690,6 +691,7 @@ static irqreturn_t wlcore_irq(int irq, void *cookie)
 		/* don't enqueue a work right now. mark it as pending */
 		set_bit(WL1271_FLAG_PENDING_WORK, &wl->flags);
 		wl1271_debug(DEBUG_IRQ, "should not enqueue work");
+		log_wakeup_reason(irq);
 		disable_irq_nosync(wl->irq);
 		pm_wakeup_event(wl->dev, 0);
 #ifdef CONFIG_HAS_WAKELOCK
