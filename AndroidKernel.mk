@@ -13,6 +13,14 @@ KERNEL_IMG=$(KERNEL_OUT)/arch/arm/boot/Image
 KERNEL_SOURCE_RELATIVE_PATH := ../../../../../../$(KERNEL_SRCDIR)
 PRODUCT_PREBUILT_KERNEL := $(TARGET_PREBUILT_KERNEL)
 
+# Add 4.8 arm-eabi to PATH if gcc can't be found
+GCC_FOUND := $(shell (which $(KERNEL_CROSS_COMPILE)gcc)2>&1 ; echo $$?)
+ifneq ($(strip $(GCC_FOUND)),0)
+ifneq ($(HOST_OS),)
+PATH := $(PATH):$(ANDROID_BUILD_TOP)/prebuilts/gcc/$(HOST_OS)-x86/arm/arm-eabi-4.8/bin/
+endif
+endif
+
 ifeq ($(TARGET_USES_UNCOMPRESSED_KERNEL),true)
 $(error TARGET_USES_UNCOMPRESSED_KERNEL is not supported)
 else
