@@ -29,7 +29,6 @@
 extern char m4sensorhub_debug;
 
 #define M4SENSORHUB_DRIVER_NAME     "m4sensorhub"
-#define M4SENSORHUB_I2C_ADDR        0x18
 
 #define KDEBUG(i, format, s...)                         \
 	do {                                            \

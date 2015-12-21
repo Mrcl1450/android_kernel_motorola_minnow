@@ -3219,6 +3219,11 @@ static void led_set_dim_brightness(struct device *dev)
 	uint16_t als = DIM_BACKLIGHT_ALS; /* default value */
 	int size;
 
+	if (m4sensorhub_get_current_mode() != NORMALMODE) {
+		dev_err(dev, "M4 not ready, Unable to set dim brightness\n");
+		return;
+	}
+
 	m4sensorhub = m4sensorhub_client_get_drvdata();
 	size = m4sensorhub_reg_getsize(m4sensorhub,
 				       M4SH_REG_LIGHTSENSOR_SIGNAL);

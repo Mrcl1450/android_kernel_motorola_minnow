@@ -580,7 +580,8 @@ static uint8_t lm3535_convert_value (unsigned value, unsigned zone)
         reg = res / als_denom;
 
 #ifdef CONFIG_WAKEUP_SOURCE_NOTIFY
-	if (atomic_read(&lm3535_data.alsstatus)) {
+	if (atomic_read(&lm3535_data.alsstatus) &&
+	    (m4sensorhub_get_current_mode() == NORMALMODE)) {
 		if (!lm3535_data.prevent_als_read) {
 			/* make sure this is atleast as
 			high as corresponding ambient
