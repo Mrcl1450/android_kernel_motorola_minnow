@@ -10,7 +10,7 @@ ccflags-y = -Idrivers/video/omap2 \
 	-Idrivers/gpu/pvr/services4/srvkm/env/linux \
 	-Idrivers/gpu/pvr/services4/system/include \
 	-DLINUX -D__linux__ \
-	-DMOT_BUILD=3 \
+	-DMOT_BUILD=4 \
 	-DANDROID \
 	-DPVR_BUILD_DIR="\"omap3630_android\"" \
 	-DSUPPORT_SGX \
